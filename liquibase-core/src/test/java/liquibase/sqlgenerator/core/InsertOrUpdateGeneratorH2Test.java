@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.arrayWithSize;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 import liquibase.change.ColumnConfig;
 import liquibase.database.Database;
@@ -109,4 +110,30 @@ public class InsertOrUpdateGeneratorH2Test {
         assertEquals(String.format("MERGE INTO %s.%s (%s, %s) KEY(%s) VALUES ('%s', '%s');", SCHEMA_NAME, TABLE_NAME, "pk1", "col0", "pk1", "keyvalue1", "value0"), results[0].toSql());
 	}
 
+
+    /**
+     * Test method for {@link InsertOrUpdateGenerator#generateSql(InsertOrUpdateStatement, Database, SqlGeneratorChain)}.
+     * Column name "value" is a reserved word in H2, so gets quoted and becomes case-sensitive. Must be quoted in KEY(...)
+     * so it matches.
+     */
+    @Test
+    public void testGenerateMerge_quotePrimaryKeys() {
+        final InsertOrUpdateGeneratorH2 generator = new InsertOrUpdateGeneratorH2();
+
+        final InsertOrUpdateStatement insertOrUpdateStatement = new InsertOrUpdateStatement(CATALOG_NAME, SCHEMA_NAME, TABLE_NAME, "value");
+        final Database database = new H2Database();
+        final SqlGeneratorChain sqlGeneratorChain = null;
+
+        ColumnConfig columnConfig;
+        columnConfig = new ColumnConfig();
+        columnConfig.setValue("keyvalue1");
+        columnConfig.setName("value");
+        insertOrUpdateStatement.addColumn(columnConfig);
+
+        Sql[] results = generator.generateSql(insertOrUpdateStatement, database, sqlGeneratorChain);
+        assertThat(results, is(arrayWithSize(1)));
+        // Sanity check - it only makes sense to quote the keys if "value" is a reserved word
+        assertTrue(database.isReservedWord("value"));
+        assertEquals(String.format("MERGE INTO %s.%s (\"%s\") KEY(\"%s\") VALUES ('%s');", SCHEMA_NAME, TABLE_NAME, "value", "value", "keyvalue1"), results[0].toSql());
+    }
 }
